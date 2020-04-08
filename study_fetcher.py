@@ -10,6 +10,10 @@ bangladeshURL= "https://www.ilo.org/surveydata/index.php/catalog/2046"
 
 bangladeshDataDescURL= "https://www.ilo.org/surveydata/index.php/catalog/2046/data_dictionary"
 
+newURL = "https://www.ilo.org/surveyLib/index.php/catalog/2595/"
+
+newURLDataDesc = "https://www.ilo.org/surveyLib/index.php/catalog/2595/data-dictionary"
+
 def get_value(cells, label):
     for i in range(0, len(cells)):
         if cells[i].text == label:
@@ -19,6 +23,7 @@ def fetch_data_desc(url):
     doc = requests.get(url)
     soup = BeautifulSoup(doc.content, features="lxml")
 
+    print(soup.find("table", class_="ddi-table data-dictionary"))
 
     cells = soup.find("table", class_="ddi-table data-dictionary").find_all("td")
     datalink = cells[0].find("a").get('href')
@@ -28,7 +33,12 @@ def fetch_data_desc(url):
     varDoc = requests.get(datalink + "?limit=" + varNum)
     varSoup = BeautifulSoup(varDoc.content, features="lxml")
     matches = varSoup.body.find_all(string=re.compile("(Interviewer|Enumerator)s?"))
-    output["InterviewerQuestion"] = True if len(matches) > 0 else output["InterviewerQuestion"] = False
+    if len(matches) > 0:
+        output["InterviewerQuestion"] = True
+    else:
+        output["InterviewerQuestion"] = False
+
+    #output["InterviewerQuestion"] = True if len(matches) > 0 else output["InterviewerQuestion"] = False
 
 
 def fetch_study(url):
@@ -36,25 +46,23 @@ def fetch_study(url):
 
     doc = requests.get(url)
     soup = BeautifulSoup(doc.content, features="lxml")
-    cells = soup.table.find_all("td")
+    #cells = soup.table.find_all("td")
 
-    output["StudyName"] = soup.title.string
-    output["ReferenceID"] = get_value(cells, "Reference ID")
-    output["Country"] = get_value(cells, "Country")
-    output["Year"] = get_value(cells, "Year")
-    output["Producer"] = get_value(cells, "Producer(s)")
+    output["StudyName"] = soup.find("h1").text
+    output["ReferenceID"] = soup.find("div", class_="field field-idno").find("span").text
+    output["Country"] = soup.find("span", class_="dataset-country").text
+    output["Year"] = soup.find("span", class_="dataset-year").text
+    output["Producer"] = soup.find("span", class_="producers mb-3").text
     output["StudyWebsiteURL"] = soup.find("a", title="Study website (with all available documentation)").get('href')
+    output["Language"] = 
 
-    questionnaireCells = soup.find("fieldset").find_all("td")
-
-    output["Language"] = get_value(questionnaireCells, "Language")
-
-    # output["InterviewerQuestion"]
-    # output["DataFile"]
-
-    print(output)
+def write_csv(dict):
+    file = open('metadata.csv','wb')
+    w = csv.DictWriter(f, dict.keys())
+    w.writeheader()
+    w.writerow(dict)
 
 
-#fetch_study(bangladeshURL)
+fetch_study(newURL)
 
-fetch_data_desc(bangladeshDataDescURL)
+#fetch_data_desc(newURLDataDesc)
