@@ -14,6 +14,8 @@ newURL = "https://www.ilo.org/surveyLib/index.php/catalog/2595/"
 
 newURLDataDesc = "https://www.ilo.org/surveyLib/index.php/catalog/2595/data-dictionary"
 
+ILOLaborForceSurveys = "https://www.ilo.org/surveyLib/index.php/catalog?sort_by=rank&sort_order=desc&sk=#_r=&collection=LFS&country=&dtype=&from=1975&page=1&ps=&sid=&sk=&sort_by=rank&sort_order=desc&to=2018&topic=&view=s&vk="
+
 def get_value(cells, label):
     for i in range(0, len(cells)):
         if cells[i].text == label:
@@ -40,13 +42,12 @@ def fetch_data_desc(url):
 
     #output["InterviewerQuestion"] = True if len(matches) > 0 else output["InterviewerQuestion"] = False
 
-
-def fetch_study(url):
+# fetches data for a given study and downloads questionnaire
+def get_study_data(url):
     output = {}
 
     doc = requests.get(url)
     soup = BeautifulSoup(doc.content, features="lxml")
-    #cells = soup.table.find_all("td")
 
     output["StudyName"] = soup.find("h1").text
     output["ReferenceID"] = soup.find("div", class_="field field-idno").find("span").text
@@ -54,15 +55,31 @@ def fetch_study(url):
     output["Year"] = soup.find("span", class_="dataset-year").text
     output["Producer"] = soup.find("span", class_="producers mb-3").text
     output["StudyWebsiteURL"] = soup.find("a", title="Study website (with all available documentation)").get('href')
-    output["Language"] = 
+    # output["Language"] = soup.find("div", class_="dataset-language").text
 
+# writes data to a csv file
 def write_csv(dict):
     file = open('metadata.csv','wb')
-    w = csv.DictWriter(f, dict.keys())
+    w = csv.DictWriter(file, dict.keys())
     w.writeheader()
     w.writerow(dict)
 
+# Format of URL's:
+# https://www.ilo.org/surveyLib/index.php/catalog/ + number 868 - 1423
+# includes surveys other than just Labor Force Surveys
 
-fetch_study(newURL)
+def iterate_studies():
+    for i in range(868, 1424):
+        url = "https://www.ilo.org/surveyLib/index.php/catalog/" + str(i)
+        doc = requests.get(url)
+        print(i)
+        print(doc.status_code)
+        if doc.status_code != 200:
+            print("failure")
+            continue
+        else:
+            soup = BeautifulSoup(doc.content, features="lxml")
+            get_study_data(soup)
 
-#fetch_data_desc(newURLDataDesc)
+
+iterate_studies()
