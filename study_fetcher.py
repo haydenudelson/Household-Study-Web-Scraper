@@ -5,6 +5,7 @@ import re
 import os
 from utility import clean_text
 import constant
+import datetime
 
 #ILO Central Data Catalog: https://www.ilo.org/surveyLib/index.php/catalog/central
 
@@ -21,7 +22,12 @@ southAfricaURL = "https://www.ilo.org/surveyLib/index.php/catalog/2081"
 afghanistanURL = "https://www.ilo.org/surveyLib/index.php/catalog/2114"
 
 def get_year(txt):
-    res = txt[len(txt) - 4: len(txt)]
+
+    # TEST
+    if txt[len(txt) - 6] == "-":
+        res = txt[len(txt) - 11 : len(txt)]
+    else:
+        res = txt[len(txt) - 4: len(txt)]
     return res
 
 # writes data to a csv file
@@ -84,7 +90,10 @@ def get_study_data(soup, url, docsPath):
 
     StudyWebsiteURL = soup.find("a", title="Study website (with all available documentation)")
     output["StudyWebsiteURL"] = StudyWebsiteURL.get('href') if StudyWebsiteURL is not None else ""
-    output["DataFile"], output["InterviewerQuestion"] = grab_datafile(url)
+    # pull interviewer question variable name
+    output["DataFile"], output["InterviewerVariable"] = grab_datafile(url)
+    # get language from questionnaire info
+
 
     download_questionnaire(url, output["ReferenceID"], docsPath)
     print(type(output))
@@ -107,17 +116,32 @@ def iterate_studies():
         writer = csv.DictWriter(file, fieldnames=constant.HEADERS)
         writer.writeheader()
 
+    reportHeader = 'Run Report + ' + datetime.datetime.now()
+    with open('runReport.txt', 'w') as report:
+        report.write(reportHeader)
+        report.close()
+
+    numHits = 0
+
     for i in range(constant.MIN_INDEX, constant.MAX_INDEX):
         url = "https://www.ilo.org/surveyLib/index.php/catalog/" + str(i)
         doc = requests.get(url)
         print(i)
         print(doc.status_code)
         if doc.status_code != 200:
-            print("failure")
+            with open('runReport.txt', 'a') as report:
+                report.write('\n')
+                report.write(doc.status_code + " error for index " + i)
             continue
         else:
             soup = BeautifulSoup(doc.content, features="lxml")
             get_study_data(soup, url, docsPath)
+            ++numHits
 
+    with open('runReport.txt', 'a') as report:
+        report.write("Number of Hits: " + numHits + '\n')
+        numRequests = constant.MAX_INDEX - constant.MIN_INDEX
+        report.write("Number of Requests: " + numRequests + '\n')
+        report.write("Hit Rate: " + (numHits / numRequests))
 
 iterate_studies()

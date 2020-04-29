@@ -9,5 +9,5 @@ HEADERS = ["URL",
            "Producer",
            "StudyWebsiteURL",
            "DataFile",
-           "InterviewerQuestion"]
+           "InterviewerVariable"]
 
