@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 botswanaURL = "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/635"
 kenyaURL = "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/721"
 kenyaAuthUrl = "https://www.datafirst.uct.ac.za/dataportal/index.php/auth/login/?destination=catalog/721/get_microdata"
+kenyaMicroDataUrl = 'https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/721/get_microdata';
 
 def getTableValueFromKey(table, key):
     """ for a JSOUP table object, returns value in cell adjacent to cell w key"""
@@ -64,13 +65,13 @@ def authScraper(url):
         "submit": "Login"
     }
 
-    doc = requests.post(url, data=loginData)
-    soup = BeautifulSoup(doc.content, features="xml")
+    session_requests = requests.session()
+    session_requests.post(url, data=loginData, headers=dict(referer=url))
+    resp = session_requests.get(kenyaMicroDataUrl)
+    soup = BeautifulSoup(resp.content, features="xml")
 
-    print(doc.headers)
-    print(doc.is_redirect)
-    print(doc.is_permanent_redirect)
-    print(doc.content)
+    print(soup.prettify())
+
 
     # get auth cookie from POST request then make a second GET request to DF to get access
 
