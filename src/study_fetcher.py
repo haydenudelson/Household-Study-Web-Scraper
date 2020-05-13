@@ -3,27 +3,11 @@ import requests
 import csv
 import re
 import os
-from utility import clean_text
+from utility import clean_text, get_soup
 import constant
 import datetime
 
-#ILO Central Data Catalog: https://www.ilo.org/surveyLib/index.php/catalog/central
-
-paraguayURL = "https://www.ilo.org/surveyLib/index.php/catalog/2595/"
-paraguayDataDesc = "https://www.ilo.org/surveyLib/index.php/catalog/2595/data-dictionary"
-
-# this uganda survey has an interviewer question
-ugandaURL = "https://www.ilo.org/surveyLib/index.php/catalog/1400"
-
-# multiple data files
-southAfricaURL = "https://www.ilo.org/surveyLib/index.php/catalog/2081"
-
-#multiple questionnaires
-afghanistanURL = "https://www.ilo.org/surveyLib/index.php/catalog/2114"
-
 def get_year(txt):
-
-    # TEST
     if txt[len(txt) - 6] == "-":
         res = txt[len(txt) - 11 : len(txt)]
     else:
@@ -126,8 +110,6 @@ def iterate_studies():
     for i in range(constant.MIN_INDEX, constant.MAX_INDEX):
         url = "https://www.ilo.org/surveyLib/index.php/catalog/" + str(i)
         doc = requests.get(url)
-        print(i)
-        print(doc.status_code)
         if doc.status_code != 200:
             with open('runReport.txt', 'a') as report:
                 report.write('\n')
@@ -144,4 +126,3 @@ def iterate_studies():
         report.write("Number of Requests: " + numRequests + '\n')
         report.write("Hit Rate: " + (numHits / numRequests))
 
-iterate_studies()

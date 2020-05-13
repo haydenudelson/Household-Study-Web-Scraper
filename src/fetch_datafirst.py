@@ -1,11 +1,21 @@
 from utility import get_soup
 import requests
 from bs4 import BeautifulSoup
+import constant
+import os
 
+
+authenticateURL = "https://www.datafirst.uct.ac.za/dataportal/index.php/auth/login"
 botswanaURL = "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/635"
 kenyaURL = "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/721"
 kenyaAuthUrl = "https://www.datafirst.uct.ac.za/dataportal/index.php/auth/login/?destination=catalog/721/get_microdata"
 kenyaMicroDataUrl = 'https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/721/get_microdata';
+
+brazilURL = "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/442"
+brazilAuthURL = "https://www.datafirst.uct.ac.za/dataportal/index.php/auth/login/?destination=catalog/442/get_microdata"
+brazilRequestData = "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/442/get_microdata"
+
+
 
 def getTableValueFromKey(table, key):
     """ for a JSOUP table object, returns value in cell adjacent to cell w key"""
@@ -29,8 +39,6 @@ def matchSurvey(createdOn, year, country, url):
     dfYear = getTableValueFromKey(primaryTable, "Year")
     dfCountry = getTableValueFromKey(primaryTable, "Country")
 
-    getMicroData(url)
-
     if dfCreatedOn == createdOn and dfYear == year and dfCountry == country: return True
 
 def getMicroData(url):
@@ -43,39 +51,39 @@ def getMicroData(url):
     if remote is not None:
         print(remote.find("a").get("href"))
     else:
-        return None
+        requestData(dataURL)
 
-        # Log in to website
-            # make POST request to DF
-            # set env variables w username/password
-            # Status Code 302 - log in ?
-            # name:
-            # no form data?
-        # fill out questions
-        # download data
-        # Form Data
-        # email: haydenudelson2020@u.northwestern.edu
-        # password: UNENCRYPTED lol
-        # submit: Login
-
-def authScraper(url):
+# TO DO- isolate just the .dta data if it exists, otherwise download the first ?
+def requestData(url):
     loginData = {
-        "email": "haydenudelson2020@u.northwestern.edu",
-        "password": "",
+        "email": os.getenv("DATAFIRST_USERNAME"),
+        "password": os.getenv("DATAFIRST_PASSWORD"),
         "submit": "Login"
     }
 
+    formData = {
+        "surveytitle": "Ageing, Well-being and Development Project 2002-2008",
+        "surveyid": 442,
+        "id": "",  # this field was empty,
+        "abstract": constant.STUDY_ABSTRACT,
+        "chk_agree": "on",
+        "submit": "Submit"
+    }
+
     session_requests = requests.session()
-    session_requests.post(url, data=loginData, headers=dict(referer=url))
-    resp = session_requests.get(kenyaMicroDataUrl)
+    session_requests.post(authenticateURL, data=loginData, headers=dict(referer=authenticateURL))
+    session_requests.post(url, data=formData, headers=dict(referer=url))
+    resp = session_requests.get(url)
     soup = BeautifulSoup(resp.content, features="xml")
 
-    print(soup.prettify())
+    dataFiles = soup.find("div", class_="resources data-files").find_all("a")
+    currDir = os.getcwd()
+    filePath = os.path.join(currDir, "DataFirst")
+    if not os.path.exists(filePath):
+        os.mkdir(filePath)
 
 
-    # get auth cookie from POST request then make a second GET request to DF to get access
+    for file in dataFiles:
+        r = requests.get(file.get('href'), allow_redirects=True)
+        open(filePath + "/" + file.get("title"), 'wb').write(r.content)
 
-
-
-#matchSurvey("Nov 16, 2017", "2020", "Botswana", kenyaURL)
-authScraper(kenyaAuthUrl)
