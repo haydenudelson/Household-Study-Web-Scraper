@@ -1,7 +1,18 @@
+from enum import Enum
+
+class Domain(Enum):
+    DATAFIRST = "DataFirst"
+    ILO = "ILO"
+    WORLDBANK = "WorldBank"
+
+METADATA_FILE = "metadata.csv"
+RUN_REPORT = "runReport.txt"
+
 MIN_INDEX = 1400
 MAX_INDEX = 1450
 
-HEADERS = ["URL",
+HEADERS = ["Domain",
+           "URL",
            "StudyName",
            "ReferenceID",
            "Country",
@@ -9,6 +20,7 @@ HEADERS = ["URL",
            "Producer",
            "StudyWebsiteURL",
            "DataFile",
+           "Questionnaire",
            "InterviewerVariable"]
 
 STUDY_ABSTRACT = "Household definitions used in multi-topic household surveys vary between surveys but have \

@@ -20,3 +20,12 @@ botswanaURL = "https://microdata.worldbank.org/index.php/catalog/3519/study-desc
 
 
 ### DATAFIRST LINKS ###
+
+botswanaURL = "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/635"
+kenyaURL = "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/721"
+kenyaMicroDataUrl = 'https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/721/get_microdata'
+
+brazilURL = "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/442"
+brazilRequestData = "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/442/get_microdata"
+
+southAfricaURL = "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/764"
