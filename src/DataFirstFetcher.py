@@ -1,15 +1,27 @@
-import requests
-from bs4 import BeautifulSoup
-import src.constant as constant
 import os
 import sys
-import src.links as links
+import re
+import time
+
+import requests
+from bs4 import BeautifulSoup
+from selenium import webdriver
+
+import src.constant as constant
 from src.StudyFetcher import StudyFetcher
 
 class DataFirstFetcher(StudyFetcher):
+    """ Class to pull survey data from DataFirst
+
+        Catalog: https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/central
+
+        Methods
+
+
+
+    """
 
     auth_url = "https://www.datafirst.uct.ac.za/dataportal/index.php/auth/login"
-    public_access_url = "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog#_r=&collection=&country=&dtype=2&from=1947&page=1&ps=&sk=&sort_by=nation&sort_order=&to=2019&topic=&view=s&vk="
 
     def __init__(self):
         """ Constructor for DataFirst class """
@@ -17,7 +29,7 @@ class DataFirstFetcher(StudyFetcher):
         self.domain = "DataFirst"
         self.set_domain_path()
 
-    def get_datafiles(self, url, survey_path):
+    def get_datafiles(self, url, reference_id):
         """Downloads the microdata from a given DataFirst soup object"""
         data_url = url + "/get_microdata"
 
@@ -26,18 +38,28 @@ class DataFirstFetcher(StudyFetcher):
         if remote is not None:
             return remote.find("a").get("href")
         else:
-            return self.request_data(data_url, survey_path)
+            return self.request_data(data_url, reference_id)
 
-    def get_questionnaire(self, url, survey_path):
+    def get_questionnaire(self, url, reference_id):
         soup = self.get_soup(url)
+
+        questionnaires = []
+
         for legend in soup.find_all("legend"):
-            if "Questionnaire" not in legend.text: continue
-            else:
-                link = legend.parent.find("a", class_="download")
-                file = requests.get(link.get("href"), allow_redirects=True)
-                open(survey_path + "/" + link.get("title"), 'wb').write(file.content)
-                return link.get("title")
-        return ""
+            survey_path = self.set_survey_path(reference_id)
+            links = legend.parent.find_all("a", class_="download")
+            for link in links:
+                title = link.get("title")
+                file = self.session.get(link.get("href"), allow_redirects=True)
+                if "Questionnaire" in legend.text:
+                    open(survey_path + "/" + title, 'wb').write(file.content)
+                else:
+                    other_docs = os.path.join(survey_path, "Other Docs")
+                    if not os.path.exists(other_docs):
+                        os.makedirs(other_docs)
+                    open(other_docs + "/" + title, 'wb').write(file.content)
+                questionnaires.append(title)
+        return questionnaires
 
     def get_study_data(self, soup, url):
 
@@ -51,44 +73,49 @@ class DataFirstFetcher(StudyFetcher):
 
         ret["ReferenceID"] = self.get_table_value_from_key(table, "Reference ID")
         ret["Country"] = self.get_table_value_from_key(table, "Country")
-        ret["Year"] = self.get_table_value_from_key(table, "Year").strip()
+
+        year = self.parse_year(self.get_table_value_from_key(table, "Year"))
+        ret["StartYear"] = year[0]
+        ret["EndYear"] = year[1]
+
         ret["Producer"] = self.get_table_value_from_key(table, "Producer(s)").strip()
         ret["StudyWebsiteURL"] = ""
 
-        survey_path = os.path.join(self.domain_path, ret["ReferenceID"])
-        if not os.path.exists(survey_path):
-            os.makedirs(survey_path)
-
-        ret["DataFile"] = self.get_datafiles(url, survey_path)
-        ret["Questionnaire"] = self.get_questionnaire(url, survey_path)
-        ret["InterviewerVariable"] = ""
+        ret["DataFile"] = self.get_datafiles(url, ret["ReferenceID"])
+        ret["Questionnaire"] = self.get_questionnaire(url, ret["ReferenceID"])
+        ret["InterviewerVariable"] = self.get_interviewer_var(soup)
 
         self.write_csv(ret)
         print(ret)
 
         return ret
 
-    def iterate_studies(self, min, max):
+    def iterate_studies(self, start, end):
         urls = ["https://www.datafirst.uct.ac.za/dataportal/index.php/catalog#_r=&collection=&country=&dtype=2&from=1947&page=1&ps=&sk=&sort_by=nation&sort_order=&to=2019&topic=&view=s&vk=",
                 "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog#_r=&collection=&country=&dtype=2&from=1947&page=2&ps=&sk=&sort_by=nation&sort_order=&to=2019&topic=&view=s&vk=",
                 "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog#_r=&collection=&country=&dtype=2&from=1947&page=3&ps=&sk=&sort_by=nation&sort_order=&to=2019&topic=&view=s&vk=",
                 "https://www.datafirst.uct.ac.za/dataportal/index.php/catalog#_r=&collection=&country=&dtype=2&from=1947&page=4&ps=&sk=&sort_by=nation&sort_order=&to=2019&topic=&view=s&vk="]
 
         self.authenticate()
-
+        pagedriver = webdriver.Firefox()
         for url in urls:
-            soup = self.get_soup(url)
-            surveys = soup.find_all("h2", class_="title")
+            pagedriver.get(url)
+            time.sleep(5)
+            res = pagedriver.find_element_by_id("surveys")
+            surveys = res.find_elements_by_tag_name("h2")
             for survey in surveys:
-                link = survey.find("a")
-                print(link.get("title"))
+                link = survey.find_element_by_tag_name("a")
+                print(link.get_attribute("title"))
                 try:
-                    self.access_study(link.get("href"))
+                    self.access_study(link.get_attribute("href"))
                 except:
-                    error = "Error: " + sys.exc_info()[0]
-                    print(error)
+                    print("Error: ", sys.exc_info())
+                    self.add_error(url, str(sys.exc_info()))
+                    self.num_errors += 1
 
+        pagedriver.quit()
         self.session.close()
+        self.write_error_report()
 
     # Class-Specific Methods
     # TO DO- isolate just the .dta data if it exists, otherwise download the first ?
@@ -105,7 +132,7 @@ class DataFirstFetcher(StudyFetcher):
                               headers=dict(referer=self.auth_url))
         self.session = session_requests
 
-    def request_data(self, url, survey_path):
+    def request_data(self, url, reference_id):
         form_data = {
             "surveytitle": "Ageing, Well-being and Development Project 2002-2008",
             "surveyid": 442,
@@ -127,33 +154,55 @@ class DataFirstFetcher(StudyFetcher):
             files_dict[file.get("title")] = file.get('href')
 
         combined_titles = '\t'.join(files_dict.keys())
-        if '.dta' in combined_titles:
+
+        survey_path = ""
+        if len(files_dict) > 0: survey_path = self.set_survey_path(reference_id)
+        if 'stata' in combined_titles:
             for file in files_dict:
-                if '.dta' in file:
-                    r = requests.get(files_dict[file], allow_redirects=True)
-                    with open(survey_path + "/" + file, 'wb') as fd:
-                        for chunk in r.iter_content(chunk_size=128):
-                            fd.write(chunk)
+                if 'stata' in file:
+                    self.zip_download(files_dict[file], file, survey_path)
                     return file
                 else: continue
 
-        elif '.csv' in combined_titles:
-            for file in files_dict:
-                if '.csv' in file:
-                    r = requests.get(files_dict[file], allow_redirects=True)
-                    with open(survey_path + "/" + file, 'wb') as fd:
-                        for chunk in r.iter_content(chunk_size=128):
-                            fd.write(chunk)
-                    return file
-                else: continue
         else:
             for file in files_dict:
-                r = requests.get(files_dict[file], allow_redirects=True)
-                with open(survey_path + "/" + file, 'wb') as fd:
-                    for chunk in r.iter_content(chunk_size=128):
-                        fd.write(chunk)
+                self.zip_download(files_dict[file], file, survey_path)
                 return file
 
+    def zip_download(self, url, name, path):
+        r = self.session.get(url)
+        print(r.status_code)
+        with open(path + "/" + name, 'wb') as fd:
+            fd.write(r.content)
+
+    def get_interviewer_var(self, soup):
+        tabs = soup.find("ul", attrs={"role": "tablist"})
+        tab = tabs.find("a", attrs={"title": "Description of data files and variables"})
+        ret = []
+
+        if tab:
+            driver = webdriver.Firefox()
+            data_desc_soup = BeautifulSoup(self.session.get(tab.get('href')).content, features="xml")
+            links = data_desc_soup.find("li", class_="filetree").find_all("a")
+            reg_ex = re.compile("((I|i)nterviewer|(E|e)numerator)s?")
+
+            for link in links:
+                if "Data Description" in link.text: continue
+                print(link)
+                driver.get(link.get('href'))
+                time.sleep(2)
+                rows = list(map(lambda x: [x.find_elements_by_tag_name("td")[0].text.strip(),
+                                           x.find_elements_by_tag_name("td")[1].text.strip()],
+                                driver.find_elements_by_class_name("row-color1") +
+                                driver.find_elements_by_class_name("row-color2")))
+                ret += [row for row in rows if reg_ex.search(row[0]) is not None or reg_ex.search(row[1]) is not None]
+            driver.quit()
+        print(ret)
+        return ret
+
+
+# fetcher = DataFirstFetcher()
+# fetcher.iterate_studies(0, 100)
 
 fetcher = DataFirstFetcher()
 fetcher.iterate_studies(0, 100)

@@ -8,15 +8,16 @@ class Domain(Enum):
 METADATA_FILE = "metadata.csv"
 RUN_REPORT = "runReport.txt"
 
-MIN_INDEX = 1400
-MAX_INDEX = 1450
+MIN_INDEX = 0
+MAX_INDEX = 2000
 
 HEADERS = ["Domain",
            "URL",
            "StudyName",
            "ReferenceID",
            "Country",
-           "Year",
+           "StartYear",
+           "EndYear",
            "Producer",
            "StudyWebsiteURL",
            "DataFile",

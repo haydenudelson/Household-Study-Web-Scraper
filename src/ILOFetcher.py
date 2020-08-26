@@ -1,199 +1,90 @@
-from bs4 import BeautifulSoup
-import requests
-import csv
 import re
-import os
-from utility import clean_text, get_soup
-import constant
-import datetime
+import sys
 
-# Format of URL's:
-# https://www.ilo.org/surveyLib/index.php/catalog/ + number 868 - 1423
-# includes surveys other than just Labor Force Surveys
+import requests
 
-#1920, 1620
+from src.StudyFetcher import StudyFetcher
 
+class ILOFetcher(StudyFetcher):
 
-# determines if any variables contain the keywords interviewer/enumerator
-def has_interviewer_question(url):
-    doc = requests.get(url)
-    soup = BeautifulSoup(doc.content, features="lxml")
-    matches = soup.body.find_all(string=re.compile("((I|i)nterviewer|(E|e)numerator)s?"))
-    return True if len(matches) > 0 else False
+    def __init__(self):
+        """ Constructor for DataFirst class """
+        super(ILOFetcher, self).__init__()
+        self.domain = "ILO"
+        self.set_domain_path()
 
-def grab_datafile(url):
-    doc = requests.get(url + "/data-dictionary")
-    soup = BeautifulSoup(doc.content, features="lxml")
+    def get_datafiles(self, url, survey_path):
+        """ Downloads datafiles for a given survey and calls get_interviewer_variable for each datafile """
+        soup = self.get_soup(url + "/data-dictionary")
+        datafiles = soup.find("ul", class_="nada-list-group").find_all("a")
+        res = []
+        int_var = []
 
-    datafiles = soup.find("table").find_all("a")
-    res = []
-    hasIntQ = False
+        for f in datafiles:
+            int_var.append(self.get_interviewer_variable(f.get("href")))
+            res.append(f.text.strip())
 
-    for f in datafiles:
-        if not hasIntQ:
-            hasIntQ = has_interviewer_question(f.get("href"))
-        res.append(f.text)
+        return res, int_var
 
-    return res, hasIntQ
+    def get_questionnaire(self, url, reference_id):
+        """ Downloads questionnaires for a given survey """
+        soup = self.get_soup(url + "/related-materials")
+        links = soup.find("fieldset").find_all("a", {"target": "_blank"})
+        questionnaires = []
 
-# finds and downloads the questionnaire
-def download_questionnaire(url, refID, docsPath):
-    doc = requests.get(url + "/related-materials")
-    soup = BeautifulSoup(doc.content, features="xml")
+        if len(links) > 0:
+            survey_path = self.set_survey_path(reference_id)
+            for link in links:
+                file = requests.get(link.get("href"), allow_redirects=True)
+                title = link.get("title")
+                open(survey_path + "/" + title, 'wb').write(file.content)
+                questionnaires.append(title)
 
-    links = soup.find("fieldset").find_all("a")
+        return questionnaires
 
-    refFolder = os.path.join(docsPath, refID)
+    def get_study_data(self, soup, url):
+        """ Pulls survey metadata and returns dict """
+        ret = {"Domain": self.domain,
+               "URL": url,
+               "StudyName": soup.find("h1").text,
+               "ReferenceID": soup.find("div", class_="field field-idno").find("span").text,
+               "Country": soup.find("table",
+                                    class_="table table-bordered table-striped table-condensed xsl-table table-grid") \
+                   .find("td").text.strip()
+               }
 
-    if not os.path.exists(refFolder):
-        os.makedirs(refFolder)
+        year = self.parse_year(soup.find("span", {"id": "dataset-year"}).text)
+        ret["StartYear"] = year[0]
+        ret["EndYear"] = year[1]
+        ret["Producer"] = soup.find("div", class_="producers mb-3").text.strip()
+        # Study website URL not available for all surveys
+        study_website_url = soup.find("a", title="Study website (with all available documentation)")
+        ret["StudyWebsiteURL"] = study_website_url.get('href') if study_website_url is not None else ""
+        ret["DataFile"], int_var = self.get_datafiles(url, ret["ReferenceID"])
+        ret["Questionnaire"] = self.get_questionnaire(url, ret["ReferenceID"])
+        ret["InterviewerVariable"] = int_var
+        self.write_csv(ret)
+        return ret
 
-    for link in links:
-        file = requests.get(link.get("href"), allow_redirects=True)
-        open(refFolder + "/" + link.get("title"), 'wb').write(file.content)
+    def iterate_studies(self, start, end):
+        for i in range(start, end):
+            url = "https://www.ilo.org/surveyLib/index.php/catalog/" + str(i)
+            try:
+                self.access_study(url)
+            except Exception:
+                print("Error: ", sys.exc_info())
+                self.add_error(str(i), str(sys.exc_info()))
+                self.num_errors += 1
+        self.write_error_report()
 
+    # Domain-Specific Functions
 
-# fetches data for a given study and downloads questionnaire
-def get_study_data(soup, url, docsPath):
-    output = {}
-
-    output["URL"] = url
-    output["StudyName"] = soup.find("h1").text
-    output["ReferenceID"] = soup.find("div", class_="field field-idno").find("span").text
-    output["Country"] = soup.find("table",
-                                  class_="table table-bordered table-striped table-condensed xsl-table table-grid")\
-        .find("td").text.strip()
-    output["Year"] = utility.get_year(output["StudyName"])
-    output["Producer"] = soup.find("div", class_="producers mb-3").text.strip()
-
-    StudyWebsiteURL = soup.find("a", title="Study website (with all available documentation)")
-    output["StudyWebsiteURL"] = StudyWebsiteURL.get('href') if StudyWebsiteURL is not None else ""
-    # pull interviewer question variable name
-    output["DataFile"], output["InterviewerVariable"] = grab_datafile(url)
-    # get language from questionnaire info
-
-
-    download_questionnaire(url, output["ReferenceID"], docsPath)
-    print(type(output))
-    print(output)
-    write_csv(output)
-
-def get_year(txt):
-    if txt[len(txt) - 6] == "-":
-        res = txt[len(txt) - 11 : len(txt)]
-    else:
-        res = txt[len(txt) - 4: len(txt)]
-    return res
-
-# writes data to a csv file
-def write_csv(dict):
-    with open('metadata.csv', 'a', newline='') as file:
-        writer = csv.DictWriter(file, fieldnames=dict.keys())
-        writer.writerow(dict)
-
-# determines if any variables contain the keywords interviewer/enumerator
-def has_interviewer_question(url):
-    doc = requests.get(url)
-    soup = BeautifulSoup(doc.content, features="lxml")
-    matches = soup.body.find_all(string=re.compile("((I|i)nterviewer|(E|e)numerator)s?"))
-    return True if len(matches) > 0 else False
-
-def grab_datafile(url):
-    doc = requests.get(url + "/data-dictionary")
-    soup = BeautifulSoup(doc.content, features="lxml")
-
-    datafiles = soup.find("table").find_all("a")
-    res = []
-    hasIntQ = False
-
-    for f in datafiles:
-        if not hasIntQ:
-            hasIntQ = has_interviewer_question(f.get("href"))
-        res.append(f.text)
-
-    return res, hasIntQ
-
-# finds and downloads the questionnaire
-def download_questionnaire(url, refID, docsPath):
-    doc = requests.get(url + "/related-materials")
-    soup = BeautifulSoup(doc.content, features="xml")
-
-    links = soup.find("fieldset").find_all("a")
-
-    refFolder = os.path.join(docsPath, refID)
-
-    if not os.path.exists(refFolder):
-        os.makedirs(refFolder)
-
-    for link in links:
-        file = requests.get(link.get("href"), allow_redirects=True)
-        open(refFolder + "/" + link.get("title"), 'wb').write(file.content)
-
-
-# fetches data for a given study and downloads questionnaire
-def get_study_data(soup, url, docsPath):
-    output = {}
-
-    output["URL"] = url
-    output["StudyName"] = soup.find("h1").text
-    output["ReferenceID"] = soup.find("div", class_="field field-idno").find("span").text
-    output["Country"] = clean_text(soup.find("table",
-                                             class_="table table-bordered table-striped table-condensed xsl-table table-grid")
-                                   .find("td").text)
-    output["Year"] = get_year(output["StudyName"])
-    output["Producer"] = clean_text(soup.find("div", class_="producers mb-3").text)
-
-    StudyWebsiteURL = soup.find("a", title="Study website (with all available documentation)")
-    output["StudyWebsiteURL"] = StudyWebsiteURL.get('href') if StudyWebsiteURL is not None else ""
-    # pull interviewer question variable name
-    output["DataFile"], output["InterviewerVariable"] = grab_datafile(url)
-    # get language from questionnaire info
-
-
-    download_questionnaire(url, output["ReferenceID"], docsPath)
-    print(type(output))
-    print(output)
-    write_csv(output)
-
-# Format of URL's:
-# https://www.ilo.org/surveyLib/index.php/catalog/ + number 868 - 1423
-# includes surveys other than just Labor Force Surveys
-
-#1920, 1620
-def iterate_studies():
-
-    currDir = os.getcwd()
-    docsPath = os.path.join(currDir, "docs")
-    if not os.path.exists(docsPath):
-        os.makedirs(docsPath)
-
-    with open('metadata.csv', 'w', newline='') as file:
-        writer = csv.DictWriter(file, fieldnames=constant.HEADERS)
-        writer.writeheader()
-
-    reportHeader = 'Run Report + ' + datetime.datetime.now()
-    with open('runReport.txt', 'w') as report:
-        report.write(reportHeader)
-        report.close()
-
-    numHits = 0
-
-    for i in range(constant.MIN_INDEX, constant.MAX_INDEX):
-        url = "https://www.ilo.org/surveyLib/index.php/catalog/" + str(i)
-        doc = requests.get(url)
-        if doc.status_code != 200:
-            with open('runReport.txt', 'a') as report:
-                report.write('\n')
-                report.write(doc.status_code + " error for index " + i)
-            continue
-        else:
-            soup = BeautifulSoup(doc.content, features="lxml")
-            get_study_data(soup, url, docsPath)
-            ++numHits
-
-    with open('runReport.txt', 'a') as report:
-        report.write("Number of Hits: " + numHits + '\n')
-        numRequests = constant.MAX_INDEX - constant.MIN_INDEX
-        report.write("Number of Requests: " + numRequests + '\n')
-        report.write("Hit Rate: " + (numHits / numRequests))
+    def get_interviewer_variable(self, url):
+        """ Checks if any variables or their descriptions contain Interviewer/Enumerator keywords """
+        soup = self.get_soup(url)
+        rows = list(map(lambda x: [x.find("div", class_="var-td p-1").text.strip(),
+                                   x.find("div", class_="p-1").text.strip()],
+                        soup.find_all("div", class_="row var-row ")))
+        reg_ex = re.compile("((I|i)nterviewer|(E|e)numerator)s?")
+        return [row for row in rows if reg_ex.search(row[0]) is not None or reg_ex.search(row[1]) is not None]
 
