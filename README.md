@@ -7,4 +7,14 @@ Household definitions used in multi-topic household surveys vary between surveys
 This web scraper pulls household survey data from the ILO, WorldBank, and DataFirst websites to analyze a large variety of surveys.
 
 ### Implementation
-The webscraper is implemented in Python 3.8.0, relying heavily on the BeautifulSoup for data extraction.
+The webscraper is implemented in Python 3.8.0, relying heavily on the BeautifulSoup and Selenium packages for data extraction.
+
+### Set-Up
+ - Download or pull this repository onto your local machine, wherever you would like to download study data
+ - Create accounts on both [DataFirst](https://www.datafirst.uct.ac.za/dataportal/index.php/auth/register) and [WorldBank](https://microdata.worldbank.org/index.php/auth/register) if you wish to download data from these catalogs
+ - Set the following environment variables with your credentials: 
+   - DATAFIRST_PASSWORD, DATAFIRST_USERNAME, WORLDBANK_PASSWORD, WORLDBANK_USERNAME
+ - Install necessary third party packages using pip
+    - `pip install -r requirements.txt`
+ - Run main.py to download all data from all three domains
+    
