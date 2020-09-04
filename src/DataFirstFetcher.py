@@ -1,12 +1,15 @@
+# Standard Library
 import os
 import sys
 import re
 import time
 
+# Third Party
 import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
 
+#Local
 import src.constant as constant
 from src.StudyFetcher import StudyFetcher
 
@@ -17,7 +20,10 @@ class DataFirstFetcher(StudyFetcher):
 
         Methods
 
-
+        authenticate(): Login to DataFirst using user credentials
+        request_data(url, reference_id): Fill out data request form and download stata file if available
+        zip_download(url, name, path): Download zip file at given url to path using name
+        get_interviewer_var(soup): Iterate through data description to find variables with keywords interviewer/enumerator
 
     """
 
@@ -62,7 +68,6 @@ class DataFirstFetcher(StudyFetcher):
         return questionnaires
 
     def get_study_data(self, soup, url):
-
         ret = {
             "Domain": self.domain,
             "URL": url,
@@ -86,7 +91,6 @@ class DataFirstFetcher(StudyFetcher):
         ret["InterviewerVariable"] = self.get_interviewer_var(soup)
 
         self.write_csv(ret)
-        print(ret)
 
         return ret
 
@@ -105,7 +109,6 @@ class DataFirstFetcher(StudyFetcher):
             surveys = res.find_elements_by_tag_name("h2")
             for survey in surveys:
                 link = survey.find_element_by_tag_name("a")
-                print(link.get_attribute("title"))
                 try:
                     self.access_study(link.get_attribute("href"))
                 except:
@@ -118,8 +121,9 @@ class DataFirstFetcher(StudyFetcher):
         self.write_error_report()
 
     # Class-Specific Methods
-    # TO DO- isolate just the .dta data if it exists, otherwise download the first ?
+
     def authenticate(self):
+        """ Log-in to Datafirst website using user credentials """
         login_data = {
             "email": os.getenv("DATAFIRST_USERNAME"),
             "password": os.getenv("DATAFIRST_PASSWORD"),
@@ -133,10 +137,12 @@ class DataFirstFetcher(StudyFetcher):
         self.session = session_requests
 
     def request_data(self, url, reference_id):
+        """ Fill out DataFirst form to request study data, necessary step to access data to download
+            If available, downloads stata file otherwise downloads first file available """
         form_data = {
             "surveytitle": "Ageing, Well-being and Development Project 2002-2008",
             "surveyid": 442,
-            "id": "",  # this field was empty,
+            "id": "",
             "abstract": constant.STUDY_ABSTRACT,
             "chk_agree": "on",
             "submit": "Submit"
@@ -170,12 +176,13 @@ class DataFirstFetcher(StudyFetcher):
                 return file
 
     def zip_download(self, url, name, path):
+        """ Download zip file at given url to path using name """
         r = self.session.get(url)
-        print(r.status_code)
         with open(path + "/" + name, 'wb') as fd:
             fd.write(r.content)
 
     def get_interviewer_var(self, soup):
+        """ Iterate through data description to find variables with keywords interviewer/enumerator """
         tabs = soup.find("ul", attrs={"role": "tablist"})
         tab = tabs.find("a", attrs={"title": "Description of data files and variables"})
         ret = []
@@ -188,7 +195,6 @@ class DataFirstFetcher(StudyFetcher):
 
             for link in links:
                 if "Data Description" in link.text: continue
-                print(link)
                 driver.get(link.get('href'))
                 time.sleep(2)
                 rows = list(map(lambda x: [x.find_elements_by_tag_name("td")[0].text.strip(),
@@ -197,12 +203,4 @@ class DataFirstFetcher(StudyFetcher):
                                 driver.find_elements_by_class_name("row-color2")))
                 ret += [row for row in rows if reg_ex.search(row[0]) is not None or reg_ex.search(row[1]) is not None]
             driver.quit()
-        print(ret)
         return ret
-
-
-# fetcher = DataFirstFetcher()
-# fetcher.iterate_studies(0, 100)
-
-fetcher = DataFirstFetcher()
-fetcher.iterate_studies(0, 100)

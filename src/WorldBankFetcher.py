@@ -1,4 +1,5 @@
 from enum import Enum
+import os
 import re
 import sys
 import time
@@ -40,7 +41,6 @@ class WorldBankFetcher(StudyFetcher):
 
     def get_questionnaire(self, url, reference_id):
         req = self.session.get(url + "/related-materials")
-        print("questionnaire page request successful")
         soup = BeautifulSoup(req.content, features="xml")
         links = soup.find("fieldset").find_all("a", {"target": "_blank"})
         questionnaires = []
@@ -73,13 +73,11 @@ class WorldBankFetcher(StudyFetcher):
         try:
             if ret["DataFile"] is not None: self.num_datafiles += 1
         except requests.exceptions.ConnectionError:
-            print("Couldn't downloaded datafile")
             self.add_error(url, str(sys.exc_info()))
             self.num_errors += 1
         ret["Questionnaire"] = self.get_questionnaire(url, ret["ReferenceID"])
         ret["InterviewerVariable"] = self.get_datafiles(url, ret["ReferenceID"])
         self.write_csv(ret)
-        print(ret)
         return ret
 
     def iterate_studies(self, start, end):
@@ -97,7 +95,6 @@ class WorldBankFetcher(StudyFetcher):
                 link = result.find_element_by_tag_name("a")
                 page_link = link.get_attribute('href')
                 links.append(page_link)
-        print(links)
         driver.quit()
 
         for link in links:
@@ -112,8 +109,9 @@ class WorldBankFetcher(StudyFetcher):
 
     # Domain-Specific Functions
 
-    # determines if any variables contain the keywords interviewer/enumerator
+
     def get_interviewer_variable(self, url):
+        """ Determines if any variables contain the keywords interviewer/enumerator """
         soup = self.get_soup(url)
         rows = list(map(lambda x: [x.find("div", class_="var-td p-1").text.strip(),
                                    x.find("div", class_="p-1").text.strip()],
@@ -122,10 +120,11 @@ class WorldBankFetcher(StudyFetcher):
         return [row for row in rows if reg_ex.search(row[0]) is not None or reg_ex.search(row[1]) is not None]
 
     def authenticate(self):
+        """ Log in to WorldBank website """
         auth_url = "https://microdata.worldbank.org/index.php/auth/login"
         form_data = {
-            "email": "haydenudelson18@gmail.com",
-            "password": "@a2Og5S7G7XdL$L",
+            "email": os.getenv("DATAFIRST_USERNAME"),
+            "password": os.getenv("DATAFIRST_PASSWORD")",
             "submit": "Login"
         }
 
@@ -139,6 +138,7 @@ class WorldBankFetcher(StudyFetcher):
 
 
     def download_datafiles(self, url, title, reference_id):
+        """ Download all documentation for a given study """
         micro_url = url + "/get-microdata"
         resp = self.session.get(micro_url)
         soup = BeautifulSoup(resp.content, features="xml")
@@ -148,7 +148,6 @@ class WorldBankFetcher(StudyFetcher):
         if form_title is None:
             None
         elif "Application for Access to a Public Use Dataset" in form_title:
-            print("public use")
             length = len(url)
             ind = url.index("catalog/") + 8
             survey_id = url[ind: length]
@@ -163,7 +162,6 @@ class WorldBankFetcher(StudyFetcher):
             self.session.post(micro_url, data=form_data, headers=dict(referer=url))
             resp = self.session.get(micro_url)
         elif "Terms and conditions" in form_title:
-            print("direct")
             form_data = {
                 "accept": "Accept"
             }
@@ -201,18 +199,8 @@ class WorldBankFetcher(StudyFetcher):
             return ""
 
     def zip_download(self, url, name, path):
+        """ Download zip file """
         self.num_datafiles += 1
         r = self.session.get(url)
         with open(path + "/" + name, 'wb') as fd:
             fd.write(r.content)
-
-example = "https://microdata.worldbank.org/index.php/catalog/3645"
-
-fetcher = WorldBankFetcher()
-fetcher.authenticate()
-
-fetcher.iterate_studies(0, 100)
-
-# soup = fetcher.get_soup(example)
-# fetcher.get_study_data(soup, example)
-# fetcher.session.close()

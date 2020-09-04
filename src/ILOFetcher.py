@@ -1,8 +1,11 @@
+# Standard Library
 import re
 import sys
 
+#Third Party
 import requests
 
+#Local Imports
 from src.StudyFetcher import StudyFetcher
 
 class ILOFetcher(StudyFetcher):
@@ -67,6 +70,7 @@ class ILOFetcher(StudyFetcher):
         return ret
 
     def iterate_studies(self, start, end):
+        """ Iterates through all studies within a given range on a class's domain """
         for i in range(start, end):
             url = "https://www.ilo.org/surveyLib/index.php/catalog/" + str(i)
             try:
